@@ -28,7 +28,9 @@ object WebSocketServerSpec extends HttpRunnableSpec {
   }
 
   private val env =
-    EventLoopGroup.nio() ++ ServerChannelFactory.nio ++ AsyncHttpClientZioBackend.layer().orDie ++ AppCollection.live ++ AppPort.live
+    EventLoopGroup.nio() ++ ServerChannelFactory.nio ++ AsyncHttpClientZioBackend
+      .layer()
+      .orDie ++ AppCollection.live ++ AppPort.live
 
   private val app = serve { AppCollection.app }
 }
