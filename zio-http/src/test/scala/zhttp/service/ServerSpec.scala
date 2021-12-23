@@ -14,7 +14,7 @@ import zio.test._
 
 import java.nio.file.Paths
 
-object ServerSpec extends HttpRunnableSpec(8088) {
+object ServerSpec extends HttpRunnableSpec {
 
   private val nonEmptyContent = for {
     data    <- Gen.listOf(Gen.alphaNumericString)
