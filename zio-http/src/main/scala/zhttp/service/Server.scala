@@ -31,7 +31,9 @@ sealed trait Server[-R, +E] { self =>
     case ConsolidateFlush     => s.copy(consolidateFlush = true)
   }
 
-  def make(implicit ev: E <:< Throwable): ZManaged[R with EventLoopGroup with ServerChannelFactory, Throwable, Int] =
+  def make(implicit
+    ev: E <:< Throwable,
+  ): ZManaged[R with EventLoopGroup with ServerChannelFactory, Throwable, ServerStart] =
     Server.make(self.asInstanceOf[Server[R, Throwable]])
 
   def start(implicit ev: E <:< Throwable): ZIO[R with EventLoopGroup with ServerChannelFactory, Throwable, Nothing] =
@@ -94,7 +96,15 @@ object Server {
     http: HttpApp[R, Throwable],
   ): ZIO[R, Throwable, Nothing] = {
     (Server.bind(port) ++ Server.app(http)).make
-      .flatMap(port => ZManaged.succeed(println(s"Server started on port: ${port}")))
+      .flatMap(serverStart =>
+        ZManaged.succeed {
+          println(
+            s"""Server started with config
+               |${serverStart()}
+               |""".stripMargin,
+          )
+        },
+      )
       .useForever
       .provideSomeLayer[R](EventLoopGroup.auto(0) ++ ServerChannelFactory.auto)
   }
@@ -116,7 +126,7 @@ object Server {
 
   def make[R](
     server: Server[R, Throwable],
-  ): ZManaged[R with EventLoopGroup with ServerChannelFactory, Throwable, Int] = {
+  ): ZManaged[R with EventLoopGroup with ServerChannelFactory, Throwable, ServerStart] = {
     val settings = server.settings()
     for {
       channelFactory <- ZManaged.access[ServerChannelFactory](_.get)
@@ -125,11 +135,13 @@ object Server {
       reqHandler      = settings.app.compile(zExec, settings, ServerTimeGenerator.make)
       init            = ServerChannelInitializer(zExec, settings, reqHandler)
       serverBootstrap = new ServerBootstrap().channelFactory(channelFactory).group(eventLoopGroup)
-      chf <- ZManaged.effect(serverBootstrap.childHandler(init).bind(settings.address))
-      _   <- ChannelFuture.asManaged(chf)
+      chf  <- ZManaged.effect(serverBootstrap.childHandler(init).bind(settings.address))
+      _    <- ChannelFuture.asManaged(chf)
+      port <- ZManaged.effect(chf.channel().localAddress().asInstanceOf[InetSocketAddress].getPort)
+      serverStartConfig    <- ZManaged.effectTotal(ServerStart.port(port) ++ ServerStart.leakDetection(settings.leakDetectionLevel))
     } yield {
       ResourceLeakDetector.setLevel(settings.leakDetectionLevel.jResourceLeakDetectionLevel)
-      chf.channel().localAddress().asInstanceOf[InetSocketAddress].getPort
+      serverStartConfig
     }
   }
 }
