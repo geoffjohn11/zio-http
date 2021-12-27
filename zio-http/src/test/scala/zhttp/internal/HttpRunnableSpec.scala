@@ -120,7 +120,7 @@ abstract class HttpRunnableSpec extends DefaultRunnableSpec { self =>
       method: Method = Method.GET,
       content: String = "",
       headers: Headers = Headers.empty,
-    ): ZIO[EventLoopGroup with ChannelFactory with HttpAppCollection, Throwable, Chunk[Byte]] =
+    ): ZIO[EventLoopGroup with ChannelFactory with AppPort with HttpAppCollection, Throwable, Chunk[Byte]] =
       request(path, method, content, headers).flatMap(_.getBody)
   }
 }
