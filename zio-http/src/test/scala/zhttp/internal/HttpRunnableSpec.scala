@@ -20,10 +20,10 @@ import zio.{Chunk, Has, Task, ZIO, ZManaged}
 abstract class HttpRunnableSpec extends DefaultRunnableSpec { self =>
   def serve[R <: Has[_]](
     app: HttpApp[R, Throwable],
-  ): ZManaged[AppPort with R with EventLoopGroup with ServerChannelFactory, Nothing, Unit] =
+  ): ZManaged[R with EventLoopGroup with ServerChannelFactory with HttpAppCollection, Nothing, Unit] =
     for {
-      serverSettings <- Server.make(Server.app(app) ++ Server.port(0) ++ Server.paranoidLeakDetection).orDie
-      _              <- ZIO.accessM[AppPort](_.get.set(serverSettings.port)).toManaged_
+      start <- Server.make(Server.app(app) ++ Server.port(0) ++ Server.paranoidLeakDetection).orDie
+      _     <- ZIO.accessM[HttpAppCollection](_.get.setPort(start.port)).toManaged_
     } yield ()
 
   def request(
@@ -31,10 +31,10 @@ abstract class HttpRunnableSpec extends DefaultRunnableSpec { self =>
     method: Method = Method.GET,
     content: String = "",
     headers: Headers = Headers.empty,
-  ): ZIO[EventLoopGroup with ChannelFactory with AppPort, Throwable, Client.ClientResponse] = {
+  ): ZIO[EventLoopGroup with ChannelFactory with HttpAppCollection, Throwable, Client.ClientResponse] = {
     for {
-      port <- ZIO.accessM[AppPort](_.get.get)
-      data = HttpData.fromText(content)
+      port <- ZIO.accessM[HttpAppCollection](_.get.getPort)
+      data = HttpData.fromString(content)
       response <- Client.request(
         Client.ClientParams(method -> URL(path, Location.Absolute(Scheme.HTTP, "localhost", port)), headers, data),
         ClientSSLOptions.DefaultSSL,
@@ -42,9 +42,9 @@ abstract class HttpRunnableSpec extends DefaultRunnableSpec { self =>
     } yield response
   }
 
-  def status(path: Path): ZIO[EventLoopGroup with ChannelFactory with AppPort, Throwable, Status] = {
+  def status(path: Path): ZIO[EventLoopGroup with ChannelFactory with HttpAppCollection, Throwable, Status] = {
     for {
-      port   <- ZIO.accessM[AppPort](_.get.get)
+      port   <- ZIO.accessM[HttpAppCollection](_.get.getPort)
       status <- Client
         .request(
           Method.GET -> URL(path, Location.Absolute(Scheme.HTTP, "localhost", port)),
@@ -57,10 +57,10 @@ abstract class HttpRunnableSpec extends DefaultRunnableSpec { self =>
   def webSocketRequest(
     path: Path = !!,
     headers: Headers = Headers.empty,
-  ): ZIO[SttpClient with AppPort, Throwable, SResponse[Either[String, WebSocket[Task]]]] = {
+  ): ZIO[SttpClient with HttpAppCollection, Throwable, SResponse[Either[String, WebSocket[Task]]]] = {
     // todo: uri should be created by using URL().asString but currently support for ws Scheme is missing
     for {
-      port <- ZIO.accessM[AppPort](_.get.get)
+      port <- ZIO.accessM[HttpAppCollection](_.get.getPort)
       url                       = s"ws://localhost:$port${path.asString}"
       headerConv: List[SHeader] = headers.toList.map(h => SHeader(h._1.toString(), h._2.toString()))
       res <- send(basicRequest.get(uri"$url").copy(headers = headerConv).response(asWebSocketUnsafe))
@@ -75,7 +75,7 @@ abstract class HttpRunnableSpec extends DefaultRunnableSpec { self =>
       method: Method = Method.GET,
       content: String = "",
       headers: Headers = Headers.empty,
-    ): ZIO[EventLoopGroup with ChannelFactory with AppPort with HttpAppCollection, Throwable, Client.ClientResponse] =
+    ): ZIO[EventLoopGroup with ChannelFactory with HttpAppCollection, Throwable, Client.ClientResponse] =
       for {
         id       <- deploy
         response <- self.request(path, method, content, Headers(AppCollection.APP_ID, id) ++ headers)
@@ -86,7 +86,7 @@ abstract class HttpRunnableSpec extends DefaultRunnableSpec { self =>
       method: Method = Method.GET,
       content: String = "",
       headers: Headers = Headers.empty,
-    ): ZIO[EventLoopGroup with ChannelFactory with AppPort with HttpAppCollection, Throwable, String] =
+    ): ZIO[EventLoopGroup with ChannelFactory with HttpAppCollection, Throwable, String] =
       request(path, method, content, headers).flatMap(_.getBodyAsString)
 
     def requestHeaderValueByName(
@@ -96,7 +96,7 @@ abstract class HttpRunnableSpec extends DefaultRunnableSpec { self =>
       headers: Headers = Headers.empty,
     )(
       name: CharSequence,
-    ): ZIO[EventLoopGroup with ChannelFactory with AppPort with HttpAppCollection, Throwable, Option[String]] =
+    ): ZIO[EventLoopGroup with ChannelFactory with HttpAppCollection, Throwable, Option[String]] =
       request(path, method, content, headers).map(_.getHeaderValue(name))
 
     def requestStatus(
@@ -104,13 +104,13 @@ abstract class HttpRunnableSpec extends DefaultRunnableSpec { self =>
       method: Method = Method.GET,
       content: String = "",
       headers: Headers = Headers.empty,
-    ): ZIO[EventLoopGroup with ChannelFactory with AppPort with HttpAppCollection, Throwable, Status] =
+    ): ZIO[EventLoopGroup with ChannelFactory with HttpAppCollection, Throwable, Status] =
       request(path, method, content, headers).map(_.status)
 
     def webSocketStatusCode(
       path: Path = !!,
       headers: Headers = Headers.empty,
-    ): ZIO[SttpClient with AppPort with HttpAppCollection, Throwable, Int] = for {
+    ): ZIO[SttpClient with HttpAppCollection, Throwable, Int] = for {
       id  <- deploy
       res <- self.webSocketRequest(path, Headers(AppCollection.APP_ID, id) ++ headers)
     } yield res.code.code
@@ -120,7 +120,7 @@ abstract class HttpRunnableSpec extends DefaultRunnableSpec { self =>
       method: Method = Method.GET,
       content: String = "",
       headers: Headers = Headers.empty,
-    ): ZIO[EventLoopGroup with ChannelFactory with AppPort with HttpAppCollection, Throwable, Chunk[Byte]] =
+    ): ZIO[EventLoopGroup with ChannelFactory with HttpAppCollection, Throwable, Chunk[Byte]] =
       request(path, method, content, headers).flatMap(_.getBody)
   }
 }
