@@ -6,7 +6,7 @@ import sttp.model.{Header => SHeader}
 import sttp.ws.WebSocket
 import zhttp.http.URL.Location
 import zhttp.http._
-import zhttp.internal.AppCollection.HttpEnv
+import zhttp.internal.DynamicServer.HttpEnv
 import zhttp.service._
 import zhttp.service.client.ClientSSLHandler.ClientSSLOptions
 import zio.test.DefaultRunnableSpec
@@ -20,10 +20,10 @@ import zio.{Chunk, Has, Task, ZIO, ZManaged}
 abstract class HttpRunnableSpec extends DefaultRunnableSpec { self =>
   def serve[R <: Has[_]](
     app: HttpApp[R, Throwable],
-  ): ZManaged[R with EventLoopGroup with ServerChannelFactory with HttpAppCollection, Nothing, Unit] =
+  ): ZManaged[R with EventLoopGroup with ServerChannelFactory with DynamicServer, Nothing, Unit] =
     for {
       start <- Server.make(Server.app(app) ++ Server.port(0) ++ Server.paranoidLeakDetection).orDie
-      _     <- ZIO.accessM[HttpAppCollection](_.get.setPort(start.port)).toManaged_
+      _     <- ZIO.accessM[DynamicServer](_.get.setPort(start.port)).toManaged_
     } yield ()
 
   def request(
@@ -31,9 +31,9 @@ abstract class HttpRunnableSpec extends DefaultRunnableSpec { self =>
     method: Method = Method.GET,
     content: String = "",
     headers: Headers = Headers.empty,
-  ): ZIO[EventLoopGroup with ChannelFactory with HttpAppCollection, Throwable, Client.ClientResponse] = {
+  ): ZIO[EventLoopGroup with ChannelFactory with DynamicServer, Throwable, Client.ClientResponse] = {
     for {
-      port <- AppCollection.getPort
+      port <- DynamicServer.getPort
       data = HttpData.fromString(content)
       response <- Client.request(
         Client.ClientParams(method -> URL(path, Location.Absolute(Scheme.HTTP, "localhost", port)), headers, data),
@@ -42,9 +42,9 @@ abstract class HttpRunnableSpec extends DefaultRunnableSpec { self =>
     } yield response
   }
 
-  def status(path: Path): ZIO[EventLoopGroup with ChannelFactory with HttpAppCollection, Throwable, Status] = {
+  def status(path: Path): ZIO[EventLoopGroup with ChannelFactory with DynamicServer, Throwable, Status] = {
     for {
-      port   <- AppCollection.getPort
+      port   <- DynamicServer.getPort
       status <- Client
         .request(
           Method.GET -> URL(path, Location.Absolute(Scheme.HTTP, "localhost", port)),
@@ -57,10 +57,10 @@ abstract class HttpRunnableSpec extends DefaultRunnableSpec { self =>
   def webSocketRequest(
     path: Path = !!,
     headers: Headers = Headers.empty,
-  ): ZIO[SttpClient with HttpAppCollection, Throwable, SResponse[Either[String, WebSocket[Task]]]] = {
+  ): ZIO[SttpClient with DynamicServer, Throwable, SResponse[Either[String, WebSocket[Task]]]] = {
     // todo: uri should be created by using URL().asString but currently support for ws Scheme is missing
     for {
-      port <- ZIO.accessM[HttpAppCollection](_.get.getPort)
+      port <- DynamicServer.getPort
       url                       = s"ws://localhost:$port${path.asString}"
       headerConv: List[SHeader] = headers.toList.map(h => SHeader(h._1.toString(), h._2.toString()))
       res <- send(basicRequest.get(uri"$url").copy(headers = headerConv).response(asWebSocketUnsafe))
@@ -68,17 +68,17 @@ abstract class HttpRunnableSpec extends DefaultRunnableSpec { self =>
   }
 
   implicit class RunnableHttpAppSyntax(app: HttpApp[HttpEnv, Throwable]) {
-    def deploy: ZIO[HttpAppCollection, Nothing, String] = AppCollection.deploy(app)
+    def deploy: ZIO[DynamicServer, Nothing, String] = DynamicServer.deploy(app)
 
     def request(
       path: Path = !!,
       method: Method = Method.GET,
       content: String = "",
       headers: Headers = Headers.empty,
-    ): ZIO[EventLoopGroup with ChannelFactory with HttpAppCollection, Throwable, Client.ClientResponse] =
+    ): ZIO[EventLoopGroup with ChannelFactory with DynamicServer, Throwable, Client.ClientResponse] =
       for {
         id       <- deploy
-        response <- self.request(path, method, content, Headers(AppCollection.APP_ID, id) ++ headers)
+        response <- self.request(path, method, content, Headers(DynamicServer.APP_ID, id) ++ headers)
       } yield response
 
     def requestBodyAsString(
@@ -86,7 +86,7 @@ abstract class HttpRunnableSpec extends DefaultRunnableSpec { self =>
       method: Method = Method.GET,
       content: String = "",
       headers: Headers = Headers.empty,
-    ): ZIO[EventLoopGroup with ChannelFactory with HttpAppCollection, Throwable, String] =
+    ): ZIO[EventLoopGroup with ChannelFactory with DynamicServer, Throwable, String] =
       request(path, method, content, headers).flatMap(_.getBodyAsString)
 
     def requestHeaderValueByName(
@@ -96,7 +96,7 @@ abstract class HttpRunnableSpec extends DefaultRunnableSpec { self =>
       headers: Headers = Headers.empty,
     )(
       name: CharSequence,
-    ): ZIO[EventLoopGroup with ChannelFactory with HttpAppCollection, Throwable, Option[String]] =
+    ): ZIO[EventLoopGroup with ChannelFactory with DynamicServer, Throwable, Option[String]] =
       request(path, method, content, headers).map(_.getHeaderValue(name))
 
     def requestStatus(
@@ -104,15 +104,15 @@ abstract class HttpRunnableSpec extends DefaultRunnableSpec { self =>
       method: Method = Method.GET,
       content: String = "",
       headers: Headers = Headers.empty,
-    ): ZIO[EventLoopGroup with ChannelFactory with HttpAppCollection, Throwable, Status] =
+    ): ZIO[EventLoopGroup with ChannelFactory with DynamicServer, Throwable, Status] =
       request(path, method, content, headers).map(_.status)
 
     def webSocketStatusCode(
       path: Path = !!,
       headers: Headers = Headers.empty,
-    ): ZIO[SttpClient with HttpAppCollection, Throwable, Int] = for {
+    ): ZIO[SttpClient with DynamicServer, Throwable, Int] = for {
       id  <- deploy
-      res <- self.webSocketRequest(path, Headers(AppCollection.APP_ID, id) ++ headers)
+      res <- self.webSocketRequest(path, Headers(DynamicServer.APP_ID, id) ++ headers)
     } yield res.code.code
 
     def requestBody(
@@ -120,7 +120,7 @@ abstract class HttpRunnableSpec extends DefaultRunnableSpec { self =>
       method: Method = Method.GET,
       content: String = "",
       headers: Headers = Headers.empty,
-    ): ZIO[EventLoopGroup with ChannelFactory with HttpAppCollection, Throwable, Chunk[Byte]] =
+    ): ZIO[EventLoopGroup with ChannelFactory with DynamicServer, Throwable, Chunk[Byte]] =
       request(path, method, content, headers).flatMap(_.getBody)
   }
 }
