@@ -33,7 +33,7 @@ abstract class HttpRunnableSpec extends DefaultRunnableSpec { self =>
     headers: Headers = Headers.empty,
   ): ZIO[EventLoopGroup with ChannelFactory with HttpAppCollection, Throwable, Client.ClientResponse] = {
     for {
-      port <- ZIO.accessM[HttpAppCollection](_.get.getPort)
+      port <- AppCollection.getPort
       data = HttpData.fromString(content)
       response <- Client.request(
         Client.ClientParams(method -> URL(path, Location.Absolute(Scheme.HTTP, "localhost", port)), headers, data),
@@ -44,7 +44,7 @@ abstract class HttpRunnableSpec extends DefaultRunnableSpec { self =>
 
   def status(path: Path): ZIO[EventLoopGroup with ChannelFactory with HttpAppCollection, Throwable, Status] = {
     for {
-      port   <- ZIO.accessM[HttpAppCollection](_.get.getPort)
+      port   <- AppCollection.getPort
       status <- Client
         .request(
           Method.GET -> URL(path, Location.Absolute(Scheme.HTTP, "localhost", port)),
