@@ -29,8 +29,7 @@ private[zhttp] final case class Handler[R](
     AttributeKey.valueOf("decoderKey")
   private val COMPLETE_PROMISE: AttributeKey[Promise[Throwable, Any]]                     =
     AttributeKey.valueOf("completePromise")
-  private val isFirst: AttributeKey[Boolean]                                              =
-    AttributeKey.valueOf("isFirst")
+  private var isFirst                                                                     = true
   private val decoderState: AttributeKey[Any]                                             =
     AttributeKey.valueOf("decoderState")
   val jRequest: AttributeKey[HttpRequest]                                                 = AttributeKey.valueOf("jReq")
@@ -267,11 +266,9 @@ private[zhttp] final case class Handler[R](
         }
 
       case step: ContentDecoder.Step[_, _, _, _, _] =>
-        println(s"here: $isLast")
-        if (!ctx.channel().attr(isFirst).get()) {
-          println(s"first: ${step.state}")
+        if (self.isFirst) {
           ctx.channel().attr(decoderState).set(step.state)
-          ctx.channel().attr(isFirst).set(true)
+          self.isFirst = false
         }
 
         unsafeRunZIO(for {
@@ -295,7 +292,6 @@ private[zhttp] final case class Handler[R](
             ctx.channel().attr(decoderState).set(state)
             if (!isLast) {
               ctx.read()
-              println("next")
             }
           }
         } yield ())
