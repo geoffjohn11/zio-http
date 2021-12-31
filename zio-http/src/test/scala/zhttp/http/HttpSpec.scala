@@ -105,12 +105,12 @@ object HttpSpec extends DefaultRunnableSpec with HExitAssertion {
       ) +
       suite("collectM")(
         test("should be empty") {
-          val a      = Http.collectM[Int] { case 1 => UIO("A") }
+          val a      = Http.collectZIO[Int] { case 1 => UIO("A") }
           val actual = a.execute(2)
           assert(actual)(isEmpty)
         } +
           test("should resolve") {
-            val a      = Http.collectM[Int] { case 1 => UIO("A") }
+            val a      = Http.collectZIO[Int] { case 1 => UIO("A") }
             val actual = a.execute(1)
             assert(actual)(isEffect)
           } +
@@ -150,7 +150,7 @@ object HttpSpec extends DefaultRunnableSpec with HExitAssertion {
         testM("taps the successs") {
           for {
             r <- Ref.make(0)
-            app = Http.succeed(1).tapM(r.set)
+            app = Http.succeed(1).tapZIO(r.set)
             _   <- app.execute(()).toEffect
             res <- r.get
           } yield assert(res)(equalTo(1))
@@ -170,7 +170,7 @@ object HttpSpec extends DefaultRunnableSpec with HExitAssertion {
         testM("taps the error") {
           for {
             r <- Ref.make(0)
-            app = Http.fail(1).tapErrorM(r.set)
+            app = Http.fail(1).tapErrorZIO(r.set)
             _   <- app.execute(()).toEffect.ignore
             res <- r.get
           } yield assert(res)(equalTo(1))

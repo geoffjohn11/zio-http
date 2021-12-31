@@ -89,11 +89,11 @@ object MiddlewareSpec extends DefaultRunnableSpec with HttpAppTestExtensions {
       } +
       suite("whenM") {
         testM("if the condition is true apply middleware") {
-          val app = (Http.ok @@ whenM(condM(true))(midA)) getHeader "X-Custom"
+          val app = (Http.ok @@ whenZIO(condM(true))(midA)) getHeader "X-Custom"
           assertM(app(Request()))(isSome(equalTo("A")))
         } +
           testM("if the condition is false don't apply any middleware") {
-            val app = (Http.ok @@ whenM(condM(false))(midA)) getHeader "X-Custom"
+            val app = (Http.ok @@ whenZIO(condM(false))(midA)) getHeader "X-Custom"
             assertM(app(Request()))(isNone)
           }
       } +
@@ -169,7 +169,7 @@ object MiddlewareSpec extends DefaultRunnableSpec with HttpAppTestExtensions {
       }
   }
 
-  private val app: HttpApp[Any with Clock, Nothing] = Http.collectM[Request] { case Method.GET -> !! / "health" =>
+  private val app: HttpApp[Any with Clock, Nothing] = Http.collectZIO[Request] { case Method.GET -> !! / "health" =>
     UIO(Response.ok).delay(1 second)
   }
   private val midA                                  = Middleware.addHeader("X-Custom", "A")
