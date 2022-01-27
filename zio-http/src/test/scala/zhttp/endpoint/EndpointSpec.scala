@@ -3,7 +3,7 @@ package zhttp.endpoint
 import zhttp.http._
 import zio.UIO
 import zio.test.Assertion._
-import zio.test.{DefaultRunnableSpec, assertTrue, assertM}
+import zio.test.{DefaultRunnableSpec, assertM, assertTrue}
 
 object EndpointSpec extends DefaultRunnableSpec {
   def spec = suite("Route") {
